@@ -16,19 +16,21 @@ public class ParallelExecutor<T> {
 
     public static final int DEFAULT_TIMEOUT_IN_SEC = 5;
 
+    public static final int SHUTDOWN_TIMEOUT_IN_SEC = 10;
+
     private List<ParallelTask> parallelTaskList = Lists.newArrayList();
 
-    private ExecutorService executorService;
+    private ExecutorService parallelExecutorService;
+
+    private ExecutorService collectResultExecutorService;
 
     private CountDownLatch taskStartLatch;
 
     private CountDownLatch taskFinishLatch;
 
-    private ExecutorService collectResultExecutorService;
-
     private long timeoutInMillSec;
 
-    public ParallelExecutor(int parallelThreads){
+    public ParallelExecutor(int parallelThreads) {
         this(parallelThreads, DEFAULT_TIMEOUT_IN_SEC, TimeUnit.SECONDS);
     }
 
@@ -37,7 +39,7 @@ public class ParallelExecutor<T> {
             throw new IllegalArgumentException("timeout must be a positive value.");
         }
         timeoutInMillSec = timeUnit.toMillis(timeout);
-        executorService = Executors.newFixedThreadPool(parallelThreads);
+        parallelExecutorService = Executors.newFixedThreadPool(parallelThreads);
         collectResultExecutorService = Executors.newFixedThreadPool(parallelThreads);
     }
 
@@ -83,6 +85,19 @@ public class ParallelExecutor<T> {
         return resultList;
     }
 
+    public void shutdown() throws InterruptedException {
+        parallelExecutorService.shutdown();
+        if (!parallelExecutorService.awaitTermination(SHUTDOWN_TIMEOUT_IN_SEC, TimeUnit.SECONDS)) {
+            parallelExecutorService.shutdownNow();
+        }
+
+        collectResultExecutorService.shutdown();
+        if (!collectResultExecutorService.awaitTermination(SHUTDOWN_TIMEOUT_IN_SEC, TimeUnit.SECONDS)) {
+            collectResultExecutorService.shutdownNow();
+        }
+    }
+
+
     private void initCountDoneLatch() {
         int taskCount = parallelTaskList.size();
         taskStartLatch = new CountDownLatch(taskCount);
@@ -111,7 +126,7 @@ public class ParallelExecutor<T> {
 
         for (ParallelTask task : parallelTaskList) {
             task.setStartLatch(taskStartLatch);
-            Future<T> taskFuture = executorService.submit(task);
+            Future<T> taskFuture = parallelExecutorService.submit(task);
             taskResultFutureList.add(taskFuture);
         }
 
