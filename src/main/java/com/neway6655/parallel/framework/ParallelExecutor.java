@@ -18,13 +18,11 @@ public class ParallelExecutor<T> {
 
     private List<ParallelTask> parallelTaskList = Lists.newArrayList();
 
-    private List<TaskResult<T>> resultList = Lists.newArrayList();
-
     private ExecutorService executorService;
 
-    private CountDownLatch taskDoneLatch;
+    private CountDownLatch taskStartLatch;
 
-    private CountDownLatch startLatch;
+    private CountDownLatch taskFinishLatch;
 
     private ExecutorService collectResultExecutorService;
 
@@ -48,40 +46,15 @@ public class ParallelExecutor<T> {
     }
 
     public List<TaskResult<T>> parallelProcess() {
+        List<TaskResult<T>> resultList = Lists.newArrayList();
+
         initCountDoneLatch();
 
-        List<Future> taskResultFutureList = Lists.newArrayList();
+        List<Future> taskResultFutureList = startParallelTasks();
 
-        for (ParallelTask task : parallelTaskList) {
-            task.setStartLatch(startLatch);
-            Future<T> taskFuture = executorService.submit(task);
-            taskResultFutureList.add(taskFuture);
-        }
+        List<Future> collectResultFutureList = getTaskFutureResults(taskResultFutureList);
 
-        try {
-            boolean started = startLatch.await(10, TimeUnit.MILLISECONDS);
-            if (!started) {
-                logger.warn("Some task has not started yet.");
-            }
-        } catch (InterruptedException e) {
-            // ignore interrupted exception.
-        }
-
-        List<Future> collectResultFutureList = Lists.newArrayList();
-        for (Future<T> future : taskResultFutureList) {
-            collectResultFutureList.add(collectResultExecutorService.submit(new CollectTaskFutureResultTask(future, taskDoneLatch)));
-        }
-
-        try {
-            boolean collectionStarted = taskDoneLatch.await(10, TimeUnit.MILLISECONDS);
-            if (!collectionStarted) {
-                logger.warn("Some task future result has not started to be collected yet.");
-            }
-        } catch (InterruptedException e) {
-            // ignore interrupted exception.
-        }
-
-        if (taskDoneLatch.getCount() == 0) {
+        if (taskFinishLatch.getCount() == 0) {
             for (Future<T> future : collectResultFutureList) {
                 TaskResult taskResult = new TaskResult();
                 try {
@@ -102,7 +75,7 @@ public class ParallelExecutor<T> {
             logger.warn("Some task's result has not been collected due to task operation timeout.");
         }
 
-        if (!isAllTaskCompleted()) {
+        if (!isAllTaskCompleted(resultList.size())) {
             logger.error("Some task's execution operation timeout, give up all task's execution result, please retry again.");
             resultList.clear();
         }
@@ -110,14 +83,52 @@ public class ParallelExecutor<T> {
         return resultList;
     }
 
-    private boolean isAllTaskCompleted() {
-        return resultList.size() == parallelTaskList.size();
-    }
-
     private void initCountDoneLatch() {
         int taskCount = parallelTaskList.size();
-        startLatch = new CountDownLatch(taskCount);
-        taskDoneLatch = new CountDownLatch(taskCount);
+        taskStartLatch = new CountDownLatch(taskCount);
+        taskFinishLatch = new CountDownLatch(taskCount);
+    }
+
+    private List<Future> getTaskFutureResults(List<Future> taskResultFutureList) {
+        List<Future> collectResultFutureList = Lists.newArrayList();
+        for (Future<T> future : taskResultFutureList) {
+            collectResultFutureList.add(collectResultExecutorService.submit(new CollectTaskFutureResultTask(future, taskFinishLatch)));
+        }
+
+        try {
+            boolean collectionStarted = taskFinishLatch.await(10, TimeUnit.MILLISECONDS);
+            if (!collectionStarted) {
+                logger.warn("Some task future result has not started to be collected yet.");
+            }
+        } catch (InterruptedException e) {
+            // ignore interrupted exception.
+        }
+        return collectResultFutureList;
+    }
+
+    private List<Future> startParallelTasks() {
+        List<Future> taskResultFutureList = Lists.newArrayList();
+
+        for (ParallelTask task : parallelTaskList) {
+            task.setStartLatch(taskStartLatch);
+            Future<T> taskFuture = executorService.submit(task);
+            taskResultFutureList.add(taskFuture);
+        }
+
+        try {
+            boolean started = taskStartLatch.await(10, TimeUnit.MILLISECONDS);
+            if (!started) {
+                logger.warn("Some task has not started yet.");
+            }
+        } catch (InterruptedException e) {
+            // ignore interrupted exception.
+        }
+
+        return taskResultFutureList;
+    }
+
+    private boolean isAllTaskCompleted(int resultSize) {
+        return resultSize == parallelTaskList.size();
     }
 
     private class CollectTaskFutureResultTask implements Callable<T> {
@@ -142,6 +153,7 @@ public class ParallelExecutor<T> {
                 return null;
             } catch (ExecutionException e) {
                 logger.error("Error occurred when executing task.", e);
+                future.cancel(true);
                 return null;
             } catch (TimeoutException e) {
                 future.cancel(true);

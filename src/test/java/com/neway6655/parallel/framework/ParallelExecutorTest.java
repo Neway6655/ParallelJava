@@ -7,7 +7,7 @@ import java.util.concurrent.TimeUnit;
 
 import static junit.framework.Assert.assertEquals;
 
-public class ParalleExecutorTest {
+public class ParallelExecutorTest {
 
     private ParallelExecutor<String> parallelExecutor;
 
