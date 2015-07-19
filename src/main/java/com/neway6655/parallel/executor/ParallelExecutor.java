@@ -1,6 +1,8 @@
 package com.neway6655.parallel.executor;
 
 import com.google.common.collect.Lists;
+import com.neway6655.parallel.framework.ParallelTask;
+import com.neway6655.parallel.framework.TaskResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
