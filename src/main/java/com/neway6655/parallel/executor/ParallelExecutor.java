@@ -1,8 +1,7 @@
 package com.neway6655.parallel.executor;
 
 import com.google.common.collect.Lists;
-import com.neway6655.parallel.framework.ParallelTask;
-import com.neway6655.parallel.framework.TaskResult;
+import com.neway6655.parallel.executor.task.ParallelTask;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,8 +42,8 @@ public class ParallelExecutor<T> {
         collectResultExecutorService = Executors.newFixedThreadPool(parallelThreads);
     }
 
-    public List<TaskResult<T>> parallelProcess(ParallelTask... parallelTasks) {
-        List<TaskResult<T>> resultList = Lists.newArrayList();
+    public List<ParallelTask.TaskResult<T>> parallelProcess(ParallelTask... parallelTasks) {
+        List<ParallelTask.TaskResult<T>> resultList = Lists.newArrayList();
 
         initCountDoneLatch(parallelTasks.length);
 
@@ -54,7 +53,7 @@ public class ParallelExecutor<T> {
 
         if (taskFinishLatch.getCount() == 0) {
             for (Future<T> future : collectResultFutureList) {
-                TaskResult taskResult = new TaskResult();
+                ParallelTask.TaskResult taskResult = new ParallelTask.TaskResult();
                 try {
                     taskResult.setResult(future.get(timeoutInMillSec, TimeUnit.MILLISECONDS));
                 } catch (InterruptedException e) {

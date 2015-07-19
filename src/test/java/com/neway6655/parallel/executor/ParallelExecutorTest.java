@@ -1,5 +1,6 @@
 package com.neway6655.parallel.executor;
 
+import com.neway6655.parallel.executor.task.ParallelTask;
 import org.junit.Test;
 
 import java.util.List;
@@ -29,7 +30,7 @@ public class ParallelExecutorTest {
 
         parallelExecutor = new ParallelExecutor<String>(2);
 
-        List<TaskResult<String>> taskResults = parallelExecutor.parallelProcess(simpleTask1, simpleTask2);
+        List<ParallelTask.TaskResult<String>> taskResults = parallelExecutor.parallelProcess(simpleTask1, simpleTask2);
 
         assertEquals(2, taskResults.size());
         System.out.println(taskResults.get(0).getResult());
@@ -55,7 +56,7 @@ public class ParallelExecutorTest {
 
         parallelExecutor = new ParallelExecutor<String>(2, 10, TimeUnit.MILLISECONDS);
 
-        List<TaskResult<String>> taskResults = parallelExecutor.parallelProcess(simpleTask1, simpleTask2);
+        List<ParallelTask.TaskResult<String>> taskResults = parallelExecutor.parallelProcess(simpleTask1, simpleTask2);
 
         assertEquals(0, taskResults.size());
     }
@@ -80,7 +81,7 @@ public class ParallelExecutorTest {
         parallelExecutor = new ParallelExecutor<String>(2, 5, TimeUnit.SECONDS);
 
         long startTime = System.currentTimeMillis();
-        List<TaskResult<String>> taskResults = parallelExecutor.parallelProcess(simpleTask1, simpleTask2);
+        List<ParallelTask.TaskResult<String>> taskResults = parallelExecutor.parallelProcess(simpleTask1, simpleTask2);
 
         long endTime = System.currentTimeMillis();
         System.out.println("Totally used: " + (endTime - startTime) + " in millseconds.");
