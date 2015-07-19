@@ -1,4 +1,4 @@
-package com.neway6655.parallel.framework;
+package com.neway6655.parallel.executor;
 
 import com.google.common.collect.Lists;
 import org.slf4j.Logger;
@@ -17,8 +17,6 @@ public class ParallelExecutor<T> {
     public static final int DEFAULT_TIMEOUT_IN_SEC = 5;
 
     public static final int SHUTDOWN_TIMEOUT_IN_SEC = 10;
-
-    private List<ParallelTask> parallelTaskList = Lists.newArrayList();
 
     private ExecutorService parallelExecutorService;
 
@@ -43,16 +41,12 @@ public class ParallelExecutor<T> {
         collectResultExecutorService = Executors.newFixedThreadPool(parallelThreads);
     }
 
-    public void addTask(ParallelTask task) {
-        parallelTaskList.add(task);
-    }
-
-    public List<TaskResult<T>> parallelProcess() {
+    public List<TaskResult<T>> parallelProcess(ParallelTask... parallelTasks) {
         List<TaskResult<T>> resultList = Lists.newArrayList();
 
-        initCountDoneLatch();
+        initCountDoneLatch(parallelTasks.length);
 
-        List<Future> taskResultFutureList = startParallelTasks();
+        List<Future> taskResultFutureList = startParallelTasks(parallelTasks);
 
         List<Future> collectResultFutureList = getTaskFutureResults(taskResultFutureList);
 
@@ -77,7 +71,7 @@ public class ParallelExecutor<T> {
             logger.warn("Some task's result has not been collected due to task operation timeout.");
         }
 
-        if (!isAllTaskCompleted(resultList.size())) {
+        if (!isAllTaskCompleted(resultList.size(), parallelTasks.length)) {
             logger.error("Some task's execution operation timeout, give up all task's execution result, please retry again.");
             resultList.clear();
         }
@@ -98,10 +92,9 @@ public class ParallelExecutor<T> {
     }
 
 
-    private void initCountDoneLatch() {
-        int taskCount = parallelTaskList.size();
-        taskStartLatch = new CountDownLatch(taskCount);
-        taskFinishLatch = new CountDownLatch(taskCount);
+    private void initCountDoneLatch(int taskNum) {
+        taskStartLatch = new CountDownLatch(taskNum);
+        taskFinishLatch = new CountDownLatch(taskNum);
     }
 
     private List<Future> getTaskFutureResults(List<Future> taskResultFutureList) {
@@ -121,7 +114,7 @@ public class ParallelExecutor<T> {
         return collectResultFutureList;
     }
 
-    private List<Future> startParallelTasks() {
+    private List<Future> startParallelTasks(ParallelTask... parallelTaskList) {
         List<Future> taskResultFutureList = Lists.newArrayList();
 
         for (ParallelTask task : parallelTaskList) {
@@ -142,8 +135,8 @@ public class ParallelExecutor<T> {
         return taskResultFutureList;
     }
 
-    private boolean isAllTaskCompleted(int resultSize) {
-        return resultSize == parallelTaskList.size();
+    private boolean isAllTaskCompleted(int resultSize, int taskNum) {
+        return resultSize == taskNum;
     }
 
     private class CollectTaskFutureResultTask implements Callable<T> {
