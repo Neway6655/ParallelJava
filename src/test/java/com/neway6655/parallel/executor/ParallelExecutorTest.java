@@ -10,7 +10,7 @@ import static junit.framework.Assert.assertEquals;
 
 public class ParallelExecutorTest {
 
-    private ParallelExecutor<String> parallelExecutor;
+    private ParallelExecutor parallelExecutor;
 
     @Test
     public void testParalleExecutorSuccessfully() {
@@ -28,7 +28,7 @@ public class ParallelExecutorTest {
             }
         };
 
-        parallelExecutor = new ParallelExecutor<String>(2);
+        parallelExecutor = new ParallelExecutor(2);
 
         List<ParallelTask.TaskResult<String>> taskResults = parallelExecutor.parallelProcess(simpleTask1, simpleTask2);
 
@@ -54,7 +54,7 @@ public class ParallelExecutorTest {
             }
         };
 
-        parallelExecutor = new ParallelExecutor<String>(2, 10, TimeUnit.MILLISECONDS);
+        parallelExecutor = new ParallelExecutor(2, 10, TimeUnit.MILLISECONDS);
 
         List<ParallelTask.TaskResult<String>> taskResults = parallelExecutor.parallelProcess(simpleTask1, simpleTask2);
 
@@ -78,7 +78,7 @@ public class ParallelExecutorTest {
             }
         };
 
-        parallelExecutor = new ParallelExecutor<String>(2, 5, TimeUnit.SECONDS);
+        parallelExecutor = new ParallelExecutor(2, 5, TimeUnit.SECONDS);
 
         long startTime = System.currentTimeMillis();
         List<ParallelTask.TaskResult<String>> taskResults = parallelExecutor.parallelProcess(simpleTask1, simpleTask2);

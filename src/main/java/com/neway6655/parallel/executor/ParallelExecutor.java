@@ -11,7 +11,7 @@ import java.util.concurrent.*;
 /**
  * Created by neway on 12/7/15.
  */
-public class ParallelExecutor<T> {
+public class ParallelExecutor {
 
     private static final Logger logger = LoggerFactory.getLogger(ParallelExecutor.class);
 
@@ -42,7 +42,7 @@ public class ParallelExecutor<T> {
         collectResultExecutorService = Executors.newFixedThreadPool(parallelThreads);
     }
 
-    public List<ParallelTask.TaskResult<T>> parallelProcess(ParallelTask... parallelTasks) {
+    public <T> List<ParallelTask.TaskResult<T>> parallelProcess(ParallelTask... parallelTasks) {
         List<ParallelTask.TaskResult<T>> resultList = Lists.newArrayList();
 
         initCountDoneLatch(parallelTasks.length);
@@ -98,7 +98,7 @@ public class ParallelExecutor<T> {
         taskFinishLatch = new CountDownLatch(taskNum);
     }
 
-    private List<Future> getTaskFutureResults(List<Future> taskResultFutureList) {
+    private <T> List<Future> getTaskFutureResults(List<Future> taskResultFutureList) {
         List<Future> collectResultFutureList = Lists.newArrayList();
         for (Future<T> future : taskResultFutureList) {
             collectResultFutureList.add(collectResultExecutorService.submit(new CollectTaskFutureResultTask(future, taskFinishLatch)));
@@ -115,7 +115,7 @@ public class ParallelExecutor<T> {
         return collectResultFutureList;
     }
 
-    private List<Future> startParallelTasks(ParallelTask... parallelTaskList) {
+    private <T> List<Future> startParallelTasks(ParallelTask... parallelTaskList) {
         List<Future> taskResultFutureList = Lists.newArrayList();
 
         for (ParallelTask task : parallelTaskList) {
@@ -140,7 +140,7 @@ public class ParallelExecutor<T> {
         return resultSize == taskNum;
     }
 
-    private class CollectTaskFutureResultTask implements Callable<T> {
+    private class CollectTaskFutureResultTask<T> implements Callable<T> {
 
         private Future<T> future;
 
