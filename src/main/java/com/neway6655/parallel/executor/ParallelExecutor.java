@@ -125,7 +125,7 @@ public class ParallelExecutor {
         }
 
         try {
-            boolean started = taskStartLatch.await(10, TimeUnit.MILLISECONDS);
+            boolean started = taskStartLatch.await(5, TimeUnit.SECONDS);
             if (!started) {
                 logger.warn("Some task has not started yet.");
             }
