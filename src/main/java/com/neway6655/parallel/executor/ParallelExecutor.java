@@ -13,162 +13,133 @@ import java.util.concurrent.*;
  */
 public class ParallelExecutor {
 
-    private static final Logger logger = LoggerFactory.getLogger(ParallelExecutor.class);
+	private static final Logger logger = LoggerFactory.getLogger(ParallelExecutor.class);
 
-    public static final int DEFAULT_TIMEOUT_IN_SEC = 5;
+	public static final int DEFAULT_TIMEOUT_IN_SEC = 5;
 
-    public static final int SHUTDOWN_TIMEOUT_IN_SEC = 10;
+	public static final int SHUTDOWN_TIMEOUT_IN_SEC = 10;
 
-    private ExecutorService parallelExecutorService;
+	private ExecutorService parallelExecutorService;
 
-    private ExecutorService collectResultExecutorService;
+	private ExecutorService collectResultExecutorService;
 
-    private CountDownLatch taskStartLatch;
+	private long timeoutInMillSec;
 
-    private CountDownLatch taskFinishLatch;
+	public ParallelExecutor(int parallelThreads) {
+		this(parallelThreads, DEFAULT_TIMEOUT_IN_SEC, TimeUnit.SECONDS);
+	}
 
-    private long timeoutInMillSec;
+	public ParallelExecutor(int parallelThreads, long timeout, TimeUnit timeUnit) {
+		if (timeout <= 0) {
+			throw new IllegalArgumentException("timeout must be a positive value.");
+		}
+		timeoutInMillSec = timeUnit.toMillis(timeout);
+		parallelExecutorService = Executors.newFixedThreadPool(parallelThreads);
+		collectResultExecutorService = Executors.newFixedThreadPool(parallelThreads);
+	}
 
-    public ParallelExecutor(int parallelThreads) {
-        this(parallelThreads, DEFAULT_TIMEOUT_IN_SEC, TimeUnit.SECONDS);
-    }
+	public <T> List<ParallelTask.TaskResult<T>> parallelProcess(ParallelTask... parallelTasks) {
+		CountDownLatch fetchResultLatch = new CountDownLatch(parallelTasks.length);
 
-    public ParallelExecutor(int parallelThreads, long timeout, TimeUnit timeUnit) {
-        if (timeout <= 0) {
-            throw new IllegalArgumentException("timeout must be a positive value.");
-        }
-        timeoutInMillSec = timeUnit.toMillis(timeout);
-        parallelExecutorService = Executors.newFixedThreadPool(parallelThreads);
-        collectResultExecutorService = Executors.newFixedThreadPool(parallelThreads);
-    }
+		List<ParallelTask.TaskResult<T>> resultList = Lists.newArrayList();
 
-    public <T> List<ParallelTask.TaskResult<T>> parallelProcess(ParallelTask... parallelTasks) {
-        List<ParallelTask.TaskResult<T>> resultList = Lists.newArrayList();
+		List<Future> taskResultFutureList = startParallelTasks(parallelTasks);
 
-        initCountDoneLatch(parallelTasks.length);
+		List<Future> collectResultFutureList = getTaskFutureResults(taskResultFutureList, fetchResultLatch);
 
-        List<Future> taskResultFutureList = startParallelTasks(parallelTasks);
+		boolean finished = false;
+		try {
+			finished = fetchResultLatch.await(timeoutInMillSec, TimeUnit.MILLISECONDS);
+		} catch (InterruptedException e) {
+			// ignore interruptedException.
+		}
+		if (!finished) {
+            logger.error("Failed to fetch result from some task due to timeout.");
+			return resultList;
+		}
 
-        List<Future> collectResultFutureList = getTaskFutureResults(taskResultFutureList);
+		for (Future<T> future : collectResultFutureList) {
+			ParallelTask.TaskResult taskResult = new ParallelTask.TaskResult();
+			try {
+				taskResult.setResult(future.get());
+                resultList.add(taskResult);
+			} catch (InterruptedException e) {
+				// ignore interrupted exception.
+			} catch (ExecutionException e) {
+				logger.error("Error occurred when execute task.", e);
+                return Lists.newArrayList();
+			}
+		}
 
-        if (taskFinishLatch.getCount() == 0) {
-            for (Future<T> future : collectResultFutureList) {
-                ParallelTask.TaskResult taskResult = new ParallelTask.TaskResult();
-                try {
-                    taskResult.setResult(future.get(timeoutInMillSec, TimeUnit.MILLISECONDS));
-                } catch (InterruptedException e) {
-                    // ignore interrupted exception.
-                } catch (ExecutionException e) {
-                    logger.error("Error occurred when execute task.", e);
-                } catch (TimeoutException e) {
-                    logger.error("Timeout to fetch task's execution result.", e);
-                }
+		return resultList;
+	}
 
-                if (taskResult.getResult() != null) {
-                    resultList.add(taskResult);
-                }
-            }
-        } else {
-            logger.warn("Some task's result has not been collected due to task operation timeout.");
-        }
+	public void shutdown() throws InterruptedException {
+		parallelExecutorService.shutdown();
+		if (!parallelExecutorService.awaitTermination(SHUTDOWN_TIMEOUT_IN_SEC, TimeUnit.SECONDS)) {
+			parallelExecutorService.shutdownNow();
+		}
 
-        if (!isAllTaskCompleted(resultList.size(), parallelTasks.length)) {
-            logger.error("Some task's execution operation timeout, give up all task's execution result, please retry again.");
-            resultList.clear();
-        }
+		collectResultExecutorService.shutdown();
+		if (!collectResultExecutorService.awaitTermination(SHUTDOWN_TIMEOUT_IN_SEC, TimeUnit.SECONDS)) {
+			collectResultExecutorService.shutdownNow();
+		}
+	}
 
-        return resultList;
-    }
+	private <T> List<Future> getTaskFutureResults(List<Future> taskResultFutureList, CountDownLatch fetchResultLatch) {
+		List<Future> collectResultFutureList = Lists.newArrayList();
+		for (Future<T> future : taskResultFutureList) {
+			collectResultFutureList.add(collectResultExecutorService.submit(new CollectTaskFutureResultTask(future,
+					fetchResultLatch)));
+		}
 
-    public void shutdown() throws InterruptedException {
-        parallelExecutorService.shutdown();
-        if (!parallelExecutorService.awaitTermination(SHUTDOWN_TIMEOUT_IN_SEC, TimeUnit.SECONDS)) {
-            parallelExecutorService.shutdownNow();
-        }
+		return collectResultFutureList;
+	}
 
-        collectResultExecutorService.shutdown();
-        if (!collectResultExecutorService.awaitTermination(SHUTDOWN_TIMEOUT_IN_SEC, TimeUnit.SECONDS)) {
-            collectResultExecutorService.shutdownNow();
-        }
-    }
+	private <T> List<Future> startParallelTasks(ParallelTask... parallelTaskList) {
+		List<Future> taskResultFutureList = Lists.newArrayList();
 
+		for (ParallelTask task : parallelTaskList) {
+			Future<T> taskFuture = parallelExecutorService.submit(task);
+			taskResultFutureList.add(taskFuture);
+		}
 
-    private void initCountDoneLatch(int taskNum) {
-        taskStartLatch = new CountDownLatch(taskNum);
-        taskFinishLatch = new CountDownLatch(taskNum);
-    }
+		return taskResultFutureList;
+	}
 
-    private <T> List<Future> getTaskFutureResults(List<Future> taskResultFutureList) {
-        List<Future> collectResultFutureList = Lists.newArrayList();
-        for (Future<T> future : taskResultFutureList) {
-            collectResultFutureList.add(collectResultExecutorService.submit(new CollectTaskFutureResultTask(future, taskFinishLatch)));
-        }
+	private boolean isAllTaskCompleted(int resultSize, int taskNum) {
+		return resultSize == taskNum;
+	}
 
-        try {
-            boolean collectionStarted = taskFinishLatch.await(10, TimeUnit.MILLISECONDS);
-            if (!collectionStarted) {
-                logger.warn("Some task future result has not started to be collected yet.");
-            }
-        } catch (InterruptedException e) {
-            // ignore interrupted exception.
-        }
-        return collectResultFutureList;
-    }
+	private class CollectTaskFutureResultTask<T> implements Callable<T> {
 
-    private <T> List<Future> startParallelTasks(ParallelTask... parallelTaskList) {
-        List<Future> taskResultFutureList = Lists.newArrayList();
+		private Future<T> future;
 
-        for (ParallelTask task : parallelTaskList) {
-            task.setStartLatch(taskStartLatch);
-            Future<T> taskFuture = parallelExecutorService.submit(task);
-            taskResultFutureList.add(taskFuture);
-        }
+		private CountDownLatch fetchResultLatch;
 
-        try {
-            boolean started = taskStartLatch.await(5, TimeUnit.SECONDS);
-            if (!started) {
-                logger.warn("Some task has not started yet.");
-            }
-        } catch (InterruptedException e) {
-            // ignore interrupted exception.
-        }
+		public CollectTaskFutureResultTask(Future<T> future, CountDownLatch fetchResultLatch) {
+			this.future = future;
+			this.fetchResultLatch = fetchResultLatch;
+		}
 
-        return taskResultFutureList;
-    }
-
-    private boolean isAllTaskCompleted(int resultSize, int taskNum) {
-        return resultSize == taskNum;
-    }
-
-    private class CollectTaskFutureResultTask<T> implements Callable<T> {
-
-        private Future<T> future;
-
-        private CountDownLatch countDownLatch;
-
-        public CollectTaskFutureResultTask(Future<T> future, CountDownLatch countDownLatch) {
-            this.future = future;
-            this.countDownLatch = countDownLatch;
-        }
-
-        @Override
-        public T call() {
-            try {
-                countDownLatch.countDown();
-                T result = future.get(timeoutInMillSec, TimeUnit.MILLISECONDS);
-                return result;
-            } catch (InterruptedException e) {
-                // ignore interrupted exception.
-                return null;
-            } catch (ExecutionException e) {
-                logger.error("Error occurred when executing task.", e);
-                future.cancel(true);
-                return null;
-            } catch (TimeoutException e) {
-                future.cancel(true);
-                logger.error("Failed to fetch task's execution result due to timeout.", e);
-                return null;
-            }
-        }
-    }
+		@Override
+		public T call() {
+			try {
+				T result = future.get(timeoutInMillSec, TimeUnit.MILLISECONDS);
+				fetchResultLatch.countDown();
+				return result;
+			} catch (InterruptedException e) {
+				// ignore interrupted exception.
+				return null;
+			} catch (ExecutionException e) {
+				logger.error("Error occurred when executing task.", e);
+				future.cancel(true);
+				return null;
+			} catch (TimeoutException e) {
+				logger.error("Failed to fetch task's execution result due to timeout.", e);
+				future.cancel(true);
+				return null;
+			}
+		}
+	}
 }
