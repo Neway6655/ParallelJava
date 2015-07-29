@@ -14,9 +14,13 @@ import java.util.concurrent.TimeUnit;
  */
 public class ParallelExecutor {
 
-    private static final int TIMEOUT_IN_SEC = 3;
+    private static final int DEFAULT_TIMEOUT_IN_SEC = 3;
 
     public static List<Object> parallelProcess(ParallelTask... tasks) {
+        return parallelProcess(DEFAULT_TIMEOUT_IN_SEC, tasks);
+    }
+
+    public static List<Object> parallelProcess(int timeoutInSec, ParallelTask... tasks) {
 
         List<Observable<Object>> observables = Lists.newArrayList();
 
@@ -25,7 +29,11 @@ public class ParallelExecutor {
         }
 
         // TODO: Neway, how to handle timeout situations.
-        List<Object> result = Observable.merge(observables).buffer(TIMEOUT_IN_SEC, TimeUnit.SECONDS).toBlocking().first();
+        List<Object> result = Observable.merge(observables).take(timeoutInSec, TimeUnit.SECONDS).buffer(timeoutInSec, TimeUnit.SECONDS).toBlocking().first();
+
+        if (result.size() != tasks.length){
+            return Lists.newArrayList();
+        }
 
         for (Object object : result){
             System.out.println(object);

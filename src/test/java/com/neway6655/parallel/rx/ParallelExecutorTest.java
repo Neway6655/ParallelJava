@@ -8,6 +8,8 @@ import java.security.SecureRandom;
 import java.util.List;
 import java.util.Random;
 
+import static junit.framework.Assert.assertEquals;
+
 public class ParallelExecutorTest {
 
     private static Random random = new SecureRandom();
@@ -19,19 +21,44 @@ public class ParallelExecutorTest {
         ParallelTask task1 = new ParallelTask() {
             @Override
             protected Object process() {
-                return 1;
+                return "task1";
             }
         };
 
         ParallelTask task2 = new ParallelTask() {
             @Override
             protected Object process() {
-                return 2;
+                return "task2";
             }
         };
 
-        ParallelExecutor.parallelProcess(task1, task2);
+        List<Object> result = ParallelExecutor.parallelProcess(task1, task2);
+
+        assertEquals(2, result.size());
     }
+
+    @Test
+    public void testTimeout(){
+        ParallelTask longTask = new ParallelTask() {
+            @Override
+            protected Object process() throws InterruptedException {
+                Thread.sleep(2000);
+                return "long task";
+            }
+        };
+
+        ParallelTask immediateTask = new ParallelTask() {
+            @Override
+            protected Object process() throws InterruptedException {
+                return "immediate task";
+            }
+        };
+
+        List<Object> result = ParallelExecutor.parallelProcess(1, longTask, immediateTask);
+
+        assertEquals(0, result.size());
+    }
+
 
     @Test
     public void testLargeTasksParallelProcessing(){
