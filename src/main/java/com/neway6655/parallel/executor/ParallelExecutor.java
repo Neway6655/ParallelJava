@@ -107,10 +107,6 @@ public class ParallelExecutor {
 		return taskResultFutureList;
 	}
 
-	private boolean isAllTaskCompleted(int resultSize, int taskNum) {
-		return resultSize == taskNum;
-	}
-
 	private class CollectTaskFutureResultTask<T> implements Callable<T> {
 
 		private Future<T> future;
